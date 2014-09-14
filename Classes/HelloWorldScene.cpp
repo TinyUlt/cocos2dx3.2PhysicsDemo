@@ -1,7 +1,7 @@
 #include "HelloWorldScene.h"
 #include "GB2ShapeCache-x.h"
 USING_NS_CC;
- 
+
 Scene* HelloWorld::createScene()
 {
     // 'scene' is an autorelease object
@@ -79,7 +79,6 @@ bool HelloWorld::init()
         b2Vec2 gravity;
         gravity.Set(0.0f, -50.0f); //一个向下10单位的向量，作为重力减速度，Box2D中默认的单位是秒和米
         mWorld = new b2World(gravity); // 创建一个有重力加速度的世界
-        
         m_debugDraw = new GLESDebugDraw(20);   //这里新建一个 debug渲染模块
         //mWorld->SetDebugDraw(m_debugDraw);    //设置
         uint32 flags = 0;
@@ -264,7 +263,7 @@ bool HelloWorld::init()
         }
         
         
-        //创建连接线
+        //创建有弹力的连接线
         b2DistanceJointDef jd;
         b2Vec2 p1, p2, d;
         
@@ -322,6 +321,46 @@ bool HelloWorld::init()
         mjd.maxTorque = 1000.0f;
         mWorld->CreateJoint(&mjd);
 
+    }
+    
+    //创建连接线
+    {
+        b2PolygonShape shape;
+        shape.SetAsBox(0.5f, 0.125f);
+        
+        b2FixtureDef fd;
+        fd.shape = &shape;
+        fd.density = 20.0f;
+        fd.friction = 0.2f;
+        
+        b2RevoluteJointDef jd;
+        //jd.collideConnected = false;
+        
+        const float32 y = 10.0f;
+        b2Body* prevBody = m_groundBody;
+        for (int32 i = 0; i < 10; ++i)
+        {
+            b2BodyDef bd;
+            bd.type = b2_dynamicBody;
+            bd.position.Set( i*3 +10+0.5, y);//世界坐标
+            b2Body* body = mWorld->CreateBody(&bd);
+            body->CreateFixture(&fd);
+            
+            b2Vec2 anchor(float32(i)*3 +10, y);//世界坐标
+            jd.Initialize(prevBody, body, anchor);
+            mWorld->CreateJoint(&jd);
+            
+            prevBody = body;
+        }
+
+        
+        
+//        b2MotorJointDef mjd;
+//        mjd.Initialize(ReBody, body);
+//        mjd.maxForce = 1000.0f;
+//        mjd.maxTorque = 1000.0f;
+//        mWorld->CreateJoint(&mjd);
+        
     }
 
     //box2dEdit 文件加载
