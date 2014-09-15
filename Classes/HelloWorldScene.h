@@ -43,6 +43,14 @@ public:
     virtual void MouseUp(const b2Vec2& p);
     void MouseMove(const b2Vec2& p);
     
+    // Callbacks for derived classes.
+    virtual void BeginContact(b2Contact* contact);
+    virtual void EndContact(b2Contact* contact);
+    virtual void PreSolve(b2Contact* contact, const b2Manifold* oldManifold);
+    virtual void PostSolve(b2Contact* contact, const b2ContactImpulse* impulse);
+    
+    // 启动重力感应后，重力方向改变会回调didAccelerate
+    void onAcceleration(Acceleration* acc, Event* unused_event);
 };
 
 class QueryCallback : public b2QueryCallback

@@ -2,6 +2,9 @@
 #include "GB2ShapeCache-x.h"
 USING_NS_CC;
 
+const int grandMark = 1 << 0;
+const int reMark = 1 << 1;
+const int cirMark = 1 << 2;
 Scene* HelloWorld::createScene()
 {
     // 'scene' is an autorelease object
@@ -91,6 +94,7 @@ bool HelloWorld::init()
         //flags += b2Draw::e_centerOfMassBit;
         m_debugDraw->SetFlags(flags);   //需要显示那些东西
         mWorld->SetDebugDraw(m_debugDraw);
+        mWorld->SetContactListener(this);
     }
     
     
@@ -106,6 +110,11 @@ bool HelloWorld::init()
         {
             b2EdgeShape shape;
             b2FixtureDef fd;
+            
+            fd.filter.categoryBits = grandMark;
+            fd.filter.maskBits = reMark | cirMark;
+            
+            
             fd.shape = &shape;
             
             shape.Set(b2Vec2(0.0f, 0.0f), b2Vec2(Director::getInstance()->getWinSize().width * PTM_RATIO, 0.0f));
@@ -157,7 +166,8 @@ bool HelloWorld::init()
             fixtureDef.friction = 0.3f;
             fixtureDef.restitution = 0.5f;
             fixtureDef.filter.groupIndex = -8;//和小球永远不碰撞 小球的groupIndex 也是-8 相同并且是负数, 不同则会碰撞
-            
+            fixtureDef.filter.categoryBits = reMark;
+            fixtureDef.filter.maskBits = grandMark | cirMark;
             body->CreateFixture(&fixtureDef);
         }
         body->SetSleepingAllowed(true);//设置能否睡觉
@@ -230,7 +240,8 @@ bool HelloWorld::init()
             fixtureDef.density = 1.0f;
             fixtureDef.friction = 0.3f;
             fixtureDef.restitution = 0.5f;
-            
+            fixtureDef.filter.categoryBits = cirMark;
+            fixtureDef.filter.maskBits = grandMark | reMark;
             body->CreateFixture(&fixtureDef);
         }
     }
@@ -337,6 +348,56 @@ bool HelloWorld::init()
         mjd.collideConnected = true;//设置是否碰撞
         mWorld->CreateJoint(&mjd);
     }
+//    //创建类似弹簧的效果(推力)
+//    {
+//        //向世界申请一个物体
+//        b2BodyDef bodyDef;
+//        bodyDef.type = b2_dynamicBody;
+//        bodyDef.position.Set(0.0f+5+5+10,(Director::getInstance()->getWinSize().height + 400)* PTM_RATIO/2); //初始位置
+//        b2Body* body = mWorld->CreateBody(&bodyDef);
+//        
+//        //申请到之后设置物体属性
+//        {
+//            b2PolygonShape dynamicBox;
+//            dynamicBox.SetAsBox(1,1);
+//            
+//            b2FixtureDef fixtureDef;
+//            fixtureDef.shape = & dynamicBox;
+//            fixtureDef.density = 1.0f;
+//            fixtureDef.friction = 0.3f;
+//            fixtureDef.restitution = 1.0f;
+//            
+//            body->CreateFixture(&fixtureDef);
+//        }
+//        
+//        
+//        
+//        //向世界申请一个物体
+//        b2BodyDef bodyDef2;
+//        bodyDef2.type = b2_dynamicBody;
+//        bodyDef2.position.Set(0.0f+5+5,(Director::getInstance()->getWinSize().height + 400)* PTM_RATIO/2); //初始位置
+//        b2Body* body2 = mWorld->CreateBody(&bodyDef2);
+//        
+//        //申请到之后设置物体属性
+//        {
+//            b2PolygonShape dynamicBox;
+//            dynamicBox.SetAsBox(1,1);
+//            
+//            b2FixtureDef fixtureDef;
+//            fixtureDef.shape = & dynamicBox;
+//            fixtureDef.density = 1.0f;
+//            fixtureDef.friction = 0.3f;
+//            fixtureDef.restitution = 1.0f;
+//            
+//            body2->CreateFixture(&fixtureDef);
+//        }
+//        
+//        b2PulleyJointDef jointDef;
+//        jointDef.Initialize(body1, body2, groundAnchor1, groundAnchor2, anchor1, anchor2, ratio);
+//        jointDef.maxLength1 = 18.0f;
+//        jointDef.maxLength2 = 20.0f;
+//        mWorld->CreateJoint(&jointDef);
+//    }
     
     //关节旋转
     {
@@ -351,7 +412,7 @@ bool HelloWorld::init()
         b2RevoluteJointDef jd;
         //jd.collideConnected = false;
         
-        const float32 y = 10.0f;
+        const float32 y = 3.0f;
         b2Body* prevBody = m_groundBody;
         for (int32 i = 0; i < 10; ++i)
         {
@@ -539,7 +600,10 @@ bool HelloWorld::init()
     _eventDispatcher->addEventListenerWithFixedPriority(listener, -10);//先被触摸
     _touchListener = listener;
     
-    
+    Device::setAccelerometerEnabled(true);
+    Device::setAccelerometerInterval(1/30.0);
+    auto listener2 = EventListenerAcceleration::create(CC_CALLBACK_2(HelloWorld::onAcceleration,  this));
+    _eventDispatcher->addEventListenerWithSceneGraphPriority(listener2, this);
     
     
     
@@ -648,7 +712,7 @@ void HelloWorld::update(float delta)
         b2Vec2 ballPosition = bodys[i]->GetPosition();
         float birdRotation = bodys[i]->GetAngle();
         bird->setRotation(360 - CC_RADIANS_TO_DEGREES(birdRotation));
-        bird->setPosition(ccp(ballPosition.x / PTM_RATIO, ballPosition.y / PTM_RATIO));
+        bird->setPosition(Vec2(ballPosition.x / PTM_RATIO, ballPosition.y / PTM_RATIO));
     }
     
 }
@@ -667,7 +731,43 @@ void HelloWorld::draw(Renderer *renderer, const Mat4 &transform, uint32_t flags)
     
     director->popMatrix(MATRIX_STACK_TYPE::MATRIX_STACK_MODELVIEW);
 }
+void HelloWorld::BeginContact(b2Contact* contact)
+{
+    //B2_NOT_USED(contact);
+    if(contact->GetFixtureA()->GetFilterData().categoryBits == reMark)
+    {
+        CCLOG("reMark");
+    }
+    
+    if(contact->GetFixtureB()->GetFilterData().categoryBits == reMark)
+    {
+        CCLOG("reMark");
+    }
+}
 
+void HelloWorld::onAcceleration(Acceleration* acc, Event* unused_event)
+{
+    float lenth = -50;
+    float radian = acc->x * 3.14159265 / 2;
+    float x = sin(radian) * lenth;
+    float y = cos(radian) * lenth;
+    b2Vec2 gravity(-x , y);//重力感应方向的改变，表示向量力的变化
+    mWorld->SetGravity(gravity);//这两句表示判断重力的感应方向的转变
+    CCLOG("%f, %f, %f", acc->x, acc->y, acc->z);
+    
+}
+void HelloWorld::EndContact(b2Contact* contact)
+{
+    //B2_NOT_USED(contact);
+}
+void HelloWorld::PreSolve(b2Contact* contact, const b2Manifold* oldManifold)
+{
+    
+}
+void HelloWorld::PostSolve(b2Contact* contact, const b2ContactImpulse* impulse)
+{
+    
+}
 void HelloWorld::menuCloseCallback(Ref* pSender)
 {
 #if (CC_TARGET_PLATFORM == CC_PLATFORM_WP8) || (CC_TARGET_PLATFORM == CC_PLATFORM_WINRT)
