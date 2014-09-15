@@ -3,8 +3,10 @@
 #include <Box2D/Box2D.h>
 #include "GLES-Render.h"
 #include "cocos2d.h"
-#define PTM_RATIO 0.05
+#include <vector>
+#define PTM_RATIO 0.0315
 USING_NS_CC;
+using namespace std;
 class HelloWorld : public cocos2d::Layer,public b2ContactListener
 {
 public:
@@ -31,12 +33,16 @@ public:
     b2Vec2 m_mouseWorld;
     b2Body* m_groundBody;
     
+
+    vector<b2Body*> bodys;
+    
     bool onTouchBegan(Touch* touch, Event* event);
     void onTouchMoved(Touch* touch, Event* event);
     void onTouchEnded(Touch* touch, Event* event);
     virtual bool MouseDown(const b2Vec2& p);
     virtual void MouseUp(const b2Vec2& p);
     void MouseMove(const b2Vec2& p);
+    
 };
 
 class QueryCallback : public b2QueryCallback

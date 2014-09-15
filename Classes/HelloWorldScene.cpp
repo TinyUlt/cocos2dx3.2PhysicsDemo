@@ -79,7 +79,7 @@ bool HelloWorld::init()
         b2Vec2 gravity;
         gravity.Set(0.0f, -50.0f); //一个向下10单位的向量，作为重力减速度，Box2D中默认的单位是秒和米
         mWorld = new b2World(gravity); // 创建一个有重力加速度的世界
-        m_debugDraw = new GLESDebugDraw(20);   //这里新建一个 debug渲染模块
+        m_debugDraw = new GLESDebugDraw(1/PTM_RATIO);   //这里新建一个 debug渲染模块
         //mWorld->SetDebugDraw(m_debugDraw);    //设置
         uint32 flags = 0;
         flags += b2Draw::e_shapeBit ;
@@ -99,7 +99,7 @@ bool HelloWorld::init()
     {
         //向世界申请一个物体
         b2BodyDef bodyDef;
-        bodyDef.position.Set(0,10);
+        bodyDef.position.Set(0,2);
         m_groundBody = mWorld->CreateBody(&bodyDef);//添加地面
         
         //申请到之后设置物体属性
@@ -146,8 +146,6 @@ bool HelloWorld::init()
         bodyDef.type = b2_dynamicBody;
         bodyDef.position.Set(Director::getInstance()->getWinSize().width * PTM_RATIO/2,Director::getInstance()->getWinSize().height * PTM_RATIO/2); //初始位置
         b2Body* body = mWorld->CreateBody(&bodyDef);
-        
-        
         //申请到之后设置物体属性
         {
             b2PolygonShape dynamicBox;
@@ -155,12 +153,28 @@ bool HelloWorld::init()
             
             b2FixtureDef fixtureDef;
             fixtureDef.shape = & dynamicBox;
-            fixtureDef.density = 1.0f;
+            fixtureDef.density = 1.0f;//指定密度, 自动推算质量
             fixtureDef.friction = 0.3f;
-            fixtureDef.restitution = 1.0f;
+            fixtureDef.restitution = 0.5f;
+            fixtureDef.filter.groupIndex = -8;//和小球永远不碰撞 小球的groupIndex 也是-8 相同并且是负数, 不同则会碰撞
             
             body->CreateFixture(&fixtureDef);
         }
+        body->SetSleepingAllowed(true);//设置能否睡觉
+        body->SetAwake(false);//设施是否醒着
+        body->SetBullet(true);//设置是否以子弹方式定义物体(用于高速击打)
+        body->ApplyForce(b2Vec2(1000,1000), b2Vec2(0,0), true);//推力
+        body->ApplyTorque(100, true);//扭力
+        body->ApplyLinearImpulse(b2Vec2(100,100), b2Vec2(0,0), true);//冲力
+
+        
+        //重新设置质量属性
+//        b2MassData mass;
+//        mass.mass = 0.0;
+//        mass.center = b2Vec2(0,0);
+//        mass.I = 0;
+//        body->SetMassData(&mass);
+        
         
     }
     //创建小球
@@ -181,6 +195,7 @@ bool HelloWorld::init()
             fixtureDef.density = 1.0f;
             fixtureDef.friction = 0.3f;
             fixtureDef.restitution = 1.0f;
+            fixtureDef.filter.groupIndex = -8;
             
             body->CreateFixture(&fixtureDef);
         }
@@ -319,11 +334,11 @@ bool HelloWorld::init()
         mjd.Initialize(ReBody, body);
         mjd.maxForce = 1000.0f;
         mjd.maxTorque = 1000.0f;
+        mjd.collideConnected = true;//设置是否碰撞
         mWorld->CreateJoint(&mjd);
-
     }
     
-    //创建连接线
+    //关节旋转
     {
         b2PolygonShape shape;
         shape.SetAsBox(0.5f, 0.125f);
@@ -342,11 +357,11 @@ bool HelloWorld::init()
         {
             b2BodyDef bd;
             bd.type = b2_dynamicBody;
-            bd.position.Set( i*3 +10+0.5, y);//世界坐标
+            bd.position.Set( i +10+0.5, y);//世界坐标
             b2Body* body = mWorld->CreateBody(&bd);
             body->CreateFixture(&fd);
             
-            b2Vec2 anchor(float32(i)*3 +10, y);//世界坐标
+            b2Vec2 anchor(float32(i) +10, y);//节点位置,世界坐标
             jd.Initialize(prevBody, body, anchor);
             mWorld->CreateJoint(&jd);
             
@@ -354,13 +369,111 @@ bool HelloWorld::init()
         }
 
         
+    }
+    
+    
+    //发动机demo
+    {
+        //向世界申请一个矩形, 底座
+        b2BodyDef bodyDefRe;
+        bodyDefRe.type = b2_staticBody;
+        bodyDefRe.position.Set(5,9.5); //初始位置
+        ReBody = mWorld->CreateBody(&bodyDefRe);
         
-//        b2MotorJointDef mjd;
-//        mjd.Initialize(ReBody, body);
-//        mjd.maxForce = 1000.0f;
-//        mjd.maxTorque = 1000.0f;
-//        mWorld->CreateJoint(&mjd);
+        //申请到之后设置物体属性
+        {
+            b2PolygonShape shape;
+            shape.SetAsBox(2,1);
+            
+            b2FixtureDef fixtureDef;
+            fixtureDef.shape = & shape;
+            fixtureDef.density = 1.0f;
+            fixtureDef.friction = 0.3f;
+            fixtureDef.restitution = 1.0f;
+            
+            ReBody->CreateFixture(&fixtureDef);
+        }
+
+        b2Body* prevBody = ReBody;
         
+        // Define crank.第一根轴
+        {
+            b2PolygonShape shape;
+            shape.SetAsBox(0.5f, 2.0f);
+            
+            b2BodyDef bd;
+            bd.type = b2_dynamicBody;
+            bd.position.Set(0+5.0f, 7.0f+5+5);
+            b2Body* body = mWorld->CreateBody(&bd);
+            body->CreateFixture(&shape, 2.0f);
+            
+            b2RevoluteJointDef rjd;
+            rjd.Initialize(prevBody, body, b2Vec2(0+5.0f, 5.0f+5+5));
+            rjd.motorSpeed = 1.0f * b2_pi;//旋转速度 正数为逆时针
+            rjd.maxMotorTorque = 10000.0f;//给的力
+            rjd.enableMotor = true;//允许一直给力
+            mWorld->CreateJoint(&rjd);
+            
+            prevBody = body;
+        }
+        
+        // Define follower.第二根轴
+        {
+            b2PolygonShape shape;
+            shape.SetAsBox(0.5f, 4.0f);
+            
+            b2BodyDef bd;
+            bd.type = b2_dynamicBody;
+            bd.position.Set(0.0f+5, 13.0f+5+5);
+            b2Body* body = mWorld->CreateBody(&bd);
+            body->CreateFixture(&shape, 2.0f);
+            
+            b2RevoluteJointDef rjd;
+            rjd.Initialize(prevBody, body, b2Vec2(0.0f+5, 9.0f+5+5));
+            rjd.enableMotor = false;
+            mWorld->CreateJoint(&rjd);
+            
+            prevBody = body;
+        }
+//
+        // Define piston
+        {
+            //上面的拖
+            b2PolygonShape shape;
+            shape.SetAsBox(1.5f, 1.5f);
+            
+            b2BodyDef bd;
+            bd.type = b2_dynamicBody;
+            bd.fixedRotation = true;
+            bd.position.Set(0.0f+5, 17.0f+5+5);
+            b2Body* body = mWorld->CreateBody(&bd);
+            body->CreateFixture(&shape, 2.0f);
+            
+            //设置移动关节
+            b2RevoluteJointDef rjd;
+            rjd.Initialize(prevBody, body, b2Vec2(0.0f+5, 17.0f+5+5));
+            mWorld->CreateJoint(&rjd);
+            
+            b2PrismaticJointDef pjd;
+            pjd.Initialize(ReBody, body, b2Vec2(0.0f+5, 17.0f+5+5), b2Vec2(0.0f, 1.0f));//参数分别为bodyA,bodyB,运动最远点, 运动方向
+            
+            pjd.maxMotorForce = 0.0f;//永远给个向上的推力
+            pjd.enableMotor = true;
+            
+            mWorld->CreateJoint(&pjd);
+        }
+//
+//        // Create a payload
+//        {
+//            b2PolygonShape shape;
+//            shape.SetAsBox(1.5f, 1.5f);
+//            
+//            b2BodyDef bd;
+//            bd.type = b2_dynamicBody;
+//            bd.position.Set(0.0f, 23.0f);
+//            b2Body* body = mWorld->CreateBody(&bd);
+//            body->CreateFixture(&shape, 2.0f);
+//        }
     }
 
     //box2dEdit 文件加载
@@ -372,10 +485,17 @@ bool HelloWorld::init()
         b2BodyDef bodyDef;
         bodyDef.type = b2_dynamicBody;
         bodyDef.position.Set((Director::getInstance()->getWinSize().width - 500) * PTM_RATIO/2,Director::getInstance()->getWinSize().height * PTM_RATIO/2); //初始位置
-        b2Body* body = mWorld->CreateBody(&bodyDef);
-
+        b2Body* birdBody = mWorld->CreateBody(&bodyDef);
+        birdBody->SetBullet(true);
         GB2ShapeCache* cache	=	GB2ShapeCache::sharedGB2ShapeCache();
-        cache->addFixturesToBody(body,"big_bird");
+        cache->addFixturesToBody(birdBody,"big_bird");
+        
+        Sprite* birdSp = Sprite::create("big_bird.png");
+        this->addChild(birdSp);
+        birdSp->setPosition(Vec2((Director::getInstance()->getWinSize().width - 500)/2,Director::getInstance()->getWinSize().height/2));
+        
+        birdBody->SetUserData(birdSp);
+        bodys.push_back(birdBody);
     }
     //加载文件中的物体 pig_1_1
     {
@@ -395,9 +515,16 @@ bool HelloWorld::init()
         bodyDef.type = b2_dynamicBody;
         bodyDef.position.Set((Director::getInstance()->getWinSize().width - 650) * PTM_RATIO/2,Director::getInstance()->getWinSize().height * PTM_RATIO/2); //初始位置
         b2Body* body = mWorld->CreateBody(&bodyDef);
-        
+        body->SetBullet(true);
         GB2ShapeCache* cache	=	GB2ShapeCache::sharedGB2ShapeCache();
         cache->addFixturesToBody(body,"slingshot");
+        
+        
+        Sprite* birdSp = Sprite::create("slingshot.png");
+        this->addChild(birdSp);
+        birdSp->setPosition(Vec2((Director::getInstance()->getWinSize().width - 500)/2,Director::getInstance()->getWinSize().height/2));
+        body->SetUserData(birdSp);
+        bodys.push_back(body);
     }
     
     //添加触摸事件
@@ -513,16 +640,17 @@ void HelloWorld::update(float delta)
     int32 velocityIterations = 10;
     int32 positionIterations = 10;
     
-
-    
     mWorld->Step(delta, velocityIterations, positionIterations);
     mWorld->ClearForces();
     
-//    Sprite * ball = (Sprite *)(mBallBody->GetUserData());
-//    b2Vec2 ballPosition = mBallBody->GetPosition();
-//    ball->setPosition(ccp(ballPosition.x / PTM_RATIO, ballPosition.y / PTM_RATIO));
-//    
-//    CCLOG("update, delta=%f, x=%f, y=%f, v=%f",delta, ballPosition.x, ballPosition.y, mBallBody->GetLinearVelocity().y);
+    for (int i = 0; i < bodys.size(); i++) {
+        Sprite * bird = (Sprite *)(bodys[i]->GetUserData());
+        b2Vec2 ballPosition = bodys[i]->GetPosition();
+        float birdRotation = bodys[i]->GetAngle();
+        bird->setRotation(360 - CC_RADIANS_TO_DEGREES(birdRotation));
+        bird->setPosition(ccp(ballPosition.x / PTM_RATIO, ballPosition.y / PTM_RATIO));
+    }
+    
 }
 void HelloWorld::draw(Renderer *renderer, const Mat4 &transform, uint32_t flags)
 {
